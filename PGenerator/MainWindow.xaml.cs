@@ -24,5 +24,15 @@ namespace PGenerator
         {
             InitializeComponent();
         }
+
+        private void Button_Click(object sender, RoutedEventArgs e)
+        {
+            KnapsackProblem problem = new KnapsackProblem();
+            problem.N = 6;
+            problem.K = 20;
+            problem.waga = new int[] { 9, 7, 7, 9, 8, 10 };
+            problem.wartosc = new int[] { 9, 7, 7, 9, 8, 10 };
+            problem.Solve();
+        }
     }
 }
