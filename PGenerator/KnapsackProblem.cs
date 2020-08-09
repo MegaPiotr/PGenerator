@@ -9,71 +9,124 @@ namespace PGenerator
     public class KnapsackProblem
     {
         private readonly int N;
-        private readonly int MaxLength;
+        private readonly TimeSpan MaxLength;
+        private int TotalSecunds => (int)MaxLength.TotalSeconds;
+        public int MaxResultCount { get; set; } = int.MaxValue;
 
-        private int[] TimeMin;
+        private List<Track> Tracks;
 
         private int MaxResultTime = 0;
-        private List<Result> Results = new List<Result>();
+        private List<ProblemResult> Results = new List<ProblemResult>();
 
-        public KnapsackProblem(List<int> songs, int length)
+        public KnapsackProblem(List<Track> songs, TimeSpan length)
         {
             MaxLength = length;
-            TimeMin = songs.ToArray();
-            N = TimeMin.Length;
-        }
-        public KnapsackProblem(List<Track> songs, int length)
-        {
-            //MaxLength = length;
-            //TimeMin = songs.ToArray();
-            //N = TimeMin.Length;
+            Tracks = songs.OrderBy(v=>v.TotalSecunds).ToList();
+            N = Tracks.Count;
         }
 
-        public List<Result> Solve()
-        {   
-            Test(0, new Result());
-            return Results;
-        }
-        private void Test(int part, Result res)
+        public async Task<Result> Solve()
         {
-            if (part < N - 1)
-                Test(part + 1, res);
-            if (res.Time + TimeMin[part] <= MaxLength)
+            Completition = new TaskCompletionSource<List<ProblemResult>>();
+            TaskCounter++;
+            //Console.WriteLine("count:" + TaskCounter + " lvl:" + 0);
+            Task t = Task.Run(() => Test(0, new ProblemResult()));
+            await Completition.Task;
+
+            var result = new Result();
+            result.Time = TimeSpan.FromSeconds(Results.FirstOrDefault()?.Time ?? 0);
+            result.Songs = Results.Select(r => r.Songs).ToList();
+            return result;
+        }
+
+        private int TaskCounter = 0;
+        TaskCompletionSource<List<ProblemResult>> Completition;
+        private readonly object lobj = new object();
+        private void Test(int part, ProblemResult res)
+        {
+            if (Results.Count < MaxResultCount || Results[0].Time < TotalSecunds)
             {
-                res.Time += TimeMin[part];
-                res.Songs.Add(part);
-                if (part < N - 1)
-                    Test(part + 1, res);
-                else
+                if (res.Time + Tracks[part].TotalSecunds <= TotalSecunds)
                 {
-                    if (res.Time > MaxResultTime)
+                    var resCopy = (ProblemResult)res.Clone();
+                    if (!IsLast(part))
                     {
-                        MaxResultTime = res.Time;
-                        Results.Clear();
-                        Results.Add((Result)res.Clone());
+                        lock (lobj)
+                        {
+                            TaskCounter++;
+                            Task t1 = Task.Run(() => Test(part + 1, resCopy));
+                        }
                     }
-                    else if (res.Time == MaxResultTime)
+
+                    res.Time += Tracks[part].TotalSecunds;
+                    res.Songs.Add(Tracks[part]);
+
+                    if (!IsLast(part) && res.Time < TotalSecunds)
                     {
-                        Results.Add((Result)res.Clone());
+                        lock (lobj)
+                        {
+                            TaskCounter++;
+                            Task t2 = Task.Run(() => Test(part + 1, res));
+                        }
                     }
+                    else
+                        TryAddResult(res);
                 }
-                res.Time -= TimeMin[part];
-                res.Songs.Remove(part);
+                else
+                    TryAddResult(res);
+            }
+            lock (lobj)
+            {
+                TaskCounter--;
+                try
+                {
+                    if (TaskCounter == 0)
+                        Completition.SetResult(Results);
+                }
+                catch (Exception ex)
+                {
+
+                }
             }
         }
+
+        private void TryAddResult(ProblemResult res)
+        {
+            if (res.Time > MaxResultTime)
+            {
+                MaxResultTime = res.Time;
+                Results.Clear();
+                Results.Add(res);
+            }
+            else if (res.Time == MaxResultTime)
+                Results.Add(res);
+        }
+        private bool IsLast(int nr) => nr == N - 1;
     }
 
-    public class Result : ICloneable
+    public class ProblemResult : ICloneable
     {
+        public static int counter = 0;
+        public int id;
         public int Time { get; set; }
-        public List<int> Songs { get; private set; } = new List<int>();
+        public List<Track> Songs { get; private set; } = new List<Track>();
 
+        public ProblemResult()
+        {
+            id = counter++;
+        }
         public object Clone()
         {
-            var res = new Result();
+            id = counter++;
+            var res = new ProblemResult();
             res.Time = Time;
-            res.Songs = new List<int>(Songs);
+            res.Songs = new List<Track>(Songs);
             return res;
         }
+    }
+    public class Result
+    {
+        public TimeSpan Time { get; set; }
+        public List<List<Track>> Songs { get; set; }
     }
 }
